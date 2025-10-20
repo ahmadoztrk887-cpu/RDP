@@ -11,16 +11,14 @@ jobs:
     steps:
       - name: Create User Account
         run: |
-          Import-Module Microsoft.PowerShell.LocalAccounts -UseWindowsPowerShell
-          
           $password = "AdminP@ssw0rd123"
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name "admin" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "admin"
+          net user admin "$password" /add
+          net localgroup Administrators admin /add
+          net user admin /expires:never
           
           Write-Host "User created successfully"
           Write-Host "Username: admin"
-          Write-Host "Password: AdminP@ssw0rd123"
+          Write-Host "Password: $password"
 
       - name: Download and Run SSHX
         run: |
