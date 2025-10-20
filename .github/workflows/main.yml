@@ -1,91 +1,82 @@
-name: SSHX
+name: SSHX Session
 
 on:
   workflow_dispatch:
 
 jobs:
-  sshx-connection:
+  sshx-session:
     runs-on: windows-latest
-    timeout-minutes: 3600
+    timeout-minutes: 3600  # 1 saat, gerekirse artır
 
     steps:
-      - name: Create User Account
+      - name: Download and Extract SSHX
         run: |
-          $password = "AdminP@ssw0rd123"
-          net user admin "$password" /add /Y
-          net localgroup Administrators admin /add
-          net user admin /expires:never
-          
-          Write-Host "User created successfully"
-          Write-Host "Username: admin"
-          Write-Host "Password: $password"
-
-      - name: Download and Run SSHX
-        run: |
-          # Download SSHX from S3
+          # ZIP'i S3'ten indir
           $sshxUrl = "https://sshx.s3.amazonaws.com/sshx-x86_64-pc-windows-msvc.zip"
           $zipPath = "$env:TEMP\sshx.zip"
           $extractPath = "$env:TEMP\sshx"
           
-          Write-Host "Downloading SSHX from S3..."
+          Write-Host "SSHX ZIP'ini indiriliyor..."
           Invoke-WebRequest -Uri $sshxUrl -OutFile $zipPath
           
-          Write-Host "Extracting SSHX..."
+          Write-Host "ZIP çıkarılıyor..."
           New-Item -ItemType Directory -Path $extractPath -Force | Out-Null
           Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
           
-          Write-Host "Files in extracted folder:"
-          Get-ChildItem $extractPath
+          Write-Host "Çıkarılmış dosyalar:"
+          Get-ChildItem $extractPath -Recurse
           
-          # Find the exe file
+          # EXE dosyasını bul
           $exePath = Get-ChildItem -Path $extractPath -Filter "*.exe" -Recurse | Select-Object -First 1
           
-          if ($exePath) {
-              Write-Host "`n==================================="
-              Write-Host "Starting SSHX..."
-              Write-Host "===================================`n"
-              
-              # Run SSHX and capture output
-              $process = Start-Process -FilePath $exePath.FullName -NoNewWindow -PassThru -RedirectStandardOutput "$env:TEMP\sshx_output.txt" -RedirectStandardError "$env:TEMP\sshx_error.txt"
-              
-              # Wait a bit for SSHX to start and generate URL
-              Start-Sleep -Seconds 5
-              
-              # Display output
-              if (Test-Path "$env:TEMP\sshx_output.txt") {
-                  Write-Host "SSHX Output:"
-                  Get-Content "$env:TEMP\sshx_output.txt"
-              }
-              
-              if (Test-Path "$env:TEMP\sshx_error.txt") {
-                  Write-Host "SSHX Error Output:"
-                  Get-Content "$env:TEMP\sshx_error.txt"
-              }
-              
-              Write-Host "`nSSHX Process ID: $($process.Id)"
-              Write-Host "SSHX is running in background"
-          } else {
-              Write-Error "SSHX executable not found in extracted files"
+          if (-not $exePath) {
+              Write-Error "EXE dosyası bulunamadı!"
               exit 1
           }
+          
+          Write-Host "EXE yolu: $($exePath.FullName)"
+
+      - name: Run SSHX and Show Output
+        run: |
+          $extractPath = "$env:TEMP\sshx"
+          $exePath = Get-ChildItem -Path $extractPath -Filter "*.exe" -Recurse | Select-Object -First 1
+          
+          Write-Host "`n==================================="
+          Write-Host "SSHX başlatılıyor..."
+          Write-Host "===================================`n"
+          
+          # SSHX'i çalıştır ve çıktıyı yakala (arka planda değil, doğrudan log'a yaz)
+          & $exePath.FullName
+          
+          # Eğer SSHX arka planda çalışıyorsa, process'i başlat ve bekle
+          # (SSHX muhtemelen URL üretip bekler, bu yüzden Start-Process kullan)
+          $process = Start-Process -FilePath $exePath.FullName -NoNewWindow -PassThru
+          
+          # Kısa bekleme ve ilk çıktı kontrolü
+          Start-Sleep -Seconds 10
+          
+          Write-Host "SSHX Process ID: $($process.Id)"
+          Write-Host "Çıktı log'larda görünecek (eğer varsa URL paylaşılır)"
 
       - name: Keep Session Active
         run: |
-          Write-Host "`n=== SSHX SESSION ACTIVE ==="
-          Write-Host "Username: admin"
-          Write-Host "Password: AdminP@ssw0rd123"
+          Write-Host "`n=== SSHX SESSION AKTİF ==="
+          Write-Host "Workflow'u manuel olarak iptal et (Cancel) to terminate."
+          Write-Host "SSHX URL'si log'larda görünecek."
           Write-Host "===========================`n"
           
-          # Continuously check and display SSHX output
+          # Sonsuz döngü ile session'ı tut (her 5 dakikada log güncelle)
+          $outputFile = "$env:TEMP\sshx_output.log"
           while ($true) {
-              if (Test-Path "$env:TEMP\sshx_output.txt") {
-                  $content = Get-Content "$env:TEMP\sshx_output.txt" -Tail 10
-                  if ($content) {
-                      Write-Host "Latest SSHX Output:"
-                      Write-Host $content
+              # Sürekli SSHX çıktısını kontrol et ve log'a yaz (eğer dosya varsa)
+              if (Test-Path $outputFile) {
+                  $latest = Get-Content $outputFile -Tail 5
+                  if ($latest) {
+                      Write-Host "Son SSHX Çıktısı:"
+                      $latest | ForEach-Object { Write-Host $_ }
                   }
               }
               
-              Write-Host "[$(Get-Date)] Session Active - Cancel workflow to terminate"
-              Start-Sleep -Seconds 300
+              Write-Host "[$(Get-Date)] Session aktif - İptal et to close"
+              Start-Sleep -Seconds 300  # 5 dakika
           }
