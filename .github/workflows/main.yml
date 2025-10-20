@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: Create User Account
         run: |
+          Import-Module Microsoft.PowerShell.LocalAccounts -UseWindowsPowerShell
+          
           $password = "AdminP@ssw0rd123"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name "admin" -Password $securePass -AccountNeverExpires
