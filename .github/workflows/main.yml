@@ -12,7 +12,7 @@ jobs:
       - name: Create User Account
         run: |
           $password = "AdminP@ssw0rd123"
-          "Y" | net user admin "$password" /add
+          net user admin "$password" /add /Y
           net localgroup Administrators admin /add
           net user admin /expires:never
           
