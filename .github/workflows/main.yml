@@ -11,14 +11,14 @@ jobs:
     steps:
       - name: Create User Account
         run: |
-          $password = "password123"
+          $password = "AdminP@ssw0rd123"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name "admin" -Password $securePass -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "admin"
           
           Write-Host "User created successfully"
           Write-Host "Username: admin"
-          Write-Host "Password: password123"
+          Write-Host "Password: AdminP@ssw0rd123"
 
       - name: Download and Run SSHX
         run: |
@@ -73,7 +73,7 @@ jobs:
         run: |
           Write-Host "`n=== SSHX SESSION ACTIVE ==="
           Write-Host "Username: admin"
-          Write-Host "Password: password123"
+          Write-Host "Password: AdminP@ssw0rd123"
           Write-Host "===========================`n"
           
           # Continuously check and display SSHX output
