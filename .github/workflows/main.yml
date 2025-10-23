@@ -116,7 +116,8 @@ jobs:
           from datetime import datetime
           import sys
           
-          # Bot token'ı doğrudan koda yazıldı
+          # IMPORTANT: Replace this with your actual Discord bot token
+          # Get it from: https://discord.com/developers/applications
           BOT_TOKEN = "MTQzMDYyNzc2OTMxNzk4NjM4NQ.G_VIV5.otgPTwQ92MRF-gzXUhVtcT4WOLCwggjAeD0nuk"
           
           # MHDDoS dizini
@@ -264,14 +265,19 @@ jobs:
                   
                   await message.channel.send(f"✅ {stopped_count} attacks stopped!")
           
+          # Token kontrolü
+          if BOT_TOKEN == "MTQzMDYyNzc2OTMxNzk4NjM4NQ.G_VIV5.otgPTwQ92MRF-gzXUhVtcT4WOLCwggjAeD0nuk":
+              print("ERROR: You must replace 'YOUR_DISCORD_BOT_TOKEN_HERE' with your actual bot token!")
+              print("Get your token from: https://discord.com/developers/applications")
+              sys.exit(1)
+          
           # Botu başlat
           try:
               print("Starting bot...")
               client.run(BOT_TOKEN)
           except discord.errors.LoginFailure:
               print("ERROR: Invalid Discord token! Please check the token.")
-              print(f"Token length: {len(BOT_TOKEN)}")
-              print(f"Token format: {BOT_TOKEN[:10]}...{BOT_TOKEN[-10:]}")
+              print("Make sure you copied the token correctly from Discord Developer Portal.")
               sys.exit(1)
           except Exception as e:
               print(f"ERROR: Failed to start bot: {str(e)}")
