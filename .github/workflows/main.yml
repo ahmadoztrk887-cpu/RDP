@@ -113,6 +113,7 @@ jobs:
           import os
           import signal
           from datetime import datetime
+          import sys
           
           # Bot token'ı buraya girin
           BOT_TOKEN = "MTQzMDYyNzc2OTMxNzk4NjM4NQ.G_VIV5.otgPTwQ92MRF-gzXUhVtcT4WOLCwggjAeD0nuk"
@@ -264,9 +265,11 @@ jobs:
           try:
               client.run(BOT_TOKEN)
           except discord.errors.LoginFailure:
-              print("Geçersiz Discord token! Lütfen token'ı kontrol edin.")
+              print("ERROR: Invalid Discord token! Please check the token.")
+              sys.exit(1)
           except Exception as e:
-              print(f"Bot başlatılırken hata: {str(e)}")
+              print(f"ERROR: Failed to start bot: {str(e)}")
+              sys.exit(1)
           "@
           
           # Bot kodunu dosyaya yaz
