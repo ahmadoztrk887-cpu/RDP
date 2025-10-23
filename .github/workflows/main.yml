@@ -125,6 +125,8 @@ jobs:
           # Discord client'ı ayarla
           intents = discord.Intents.default()
           intents.message_content = True
+          intents.messages = True
+          intents.guilds = True
           client = discord.Client(intents=intents)
           
           # Aktif süreçleri takip etmek için
@@ -264,9 +266,12 @@ jobs:
           
           # Botu başlat
           try:
+              print("Bot başlatılıyor...")
               client.run(BOT_TOKEN)
           except discord.errors.LoginFailure:
               print("ERROR: Invalid Discord token! Please check the token.")
+              print(f"Token length: {len(BOT_TOKEN)}")
+              print(f"Token format: {BOT_TOKEN[:10]}...{BOT_TOKEN[-10:]}")
               sys.exit(1)
           except Exception as e:
               print(f"ERROR: Failed to start bot: {str(e)}")
