@@ -86,14 +86,15 @@ jobs:
 
       - name: Install Discord Bot Dependencies
         run: |
-          # Install discord.py and other required packages
+          # Önce çakışan kütüphaneleri kaldır
+          python -m pip uninstall py-cord -y
+          python -m pip uninstall nextcord -y
+          python -m pip uninstall discord-components -y
+          python -m pip uninstall discord-py-interactions -y
+          python -m pip uninstall discord-py-slash-command -y
+          
+          # Sadece discord.py ve gerekli bağımlılıkları kur
           python -m pip install discord.py
-          python -m pip install py-cord
-          python -m pip install nextcord
-          python -m pip install discord-components
-          python -m pip install discord-py-interactions
-          python -m pip install discord-py-slash-command
-          python -m pip install discord-py[voice]
           python -m pip install aiohttp
           python -m pip install async-timeout
           python -m pip install chardet
@@ -260,7 +261,12 @@ jobs:
                   await message.channel.send(f"✅ {stopped_count} saldırı durduruldu!")
           
           # Botu başlat
-          client.run(BOT_TOKEN)
+          try:
+              client.run(BOT_TOKEN)
+          except discord.errors.LoginFailure:
+              print("Geçersiz Discord token! Lütfen token'ı kontrol edin.")
+          except Exception as e:
+              print(f"Bot başlatılırken hata: {str(e)}")
           "@
           
           # Bot kodunu dosyaya yaz
