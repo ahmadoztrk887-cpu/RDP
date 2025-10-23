@@ -82,7 +82,7 @@ jobs:
           
           if (-not $tsIP) {
               Write-Error "Tailscale IP not assigned. Exiting."
-              exit 1
+            exit 1
           }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
       
@@ -97,19 +97,6 @@ jobs:
               exit 1
           }
           Write-Host "TCP connectivity successful!"
-
-      - name: Install Python and Git
-        run: |
-          # Install Python
-          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.10.0/python-3.10.0-amd64.exe" -OutFile "$env:TEMP\python-installer.exe"
-          Start-Process -FilePath "$env:TEMP\python-installer.exe" -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1" -Wait
-          
-          # Install Git
-          Invoke-WebRequest -Uri "https://github.com/git-for-windows/git/releases/download/v2.33.1.windows.1/Git-2.33.1-64-bit.exe" -OutFile "$env:TEMP\git-installer.exe"
-          Start-Process -FilePath "$env:TEMP\git-installer.exe" -ArgumentList "/VERYSILENT" -Wait
-          
-          # Refresh PATH
-          $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
 
       - name: Clone MHDDoS and Install Dependencies
         run: |
@@ -138,7 +125,7 @@ jobs:
           from datetime import datetime
           
           # Bot token'ı buraya girin
-          BOT_TOKEN = "MTQzMDYyNzc2OTMxNzk4NjM4NQ.G_VIV5.otgPTwQ92MRF-gzXUhVtcT4WOLCwggjAeD0nuk"
+          BOT_TOKEN = "${{ secrets.DISCORD_BOT_TOKEN }}"
           
           # MHDDoS dizini
           MHDDOS_PATH = "C:\\Users\\RDP\\Desktop\\MHDDoS"
@@ -156,9 +143,11 @@ jobs:
               print(f'Bot giriş yaptı: {client.user}')
               print('------')
               # Botun çalıştığını belirten bir mesaj gönder
-              channel = discord.utils.get(client.get_all_channels(), name="general")
-              if channel:
-                  await channel.send(f"✅ Bot aktif! {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+              for guild in client.guilds:
+                  for channel in guild.text_channels:
+                      if channel.name == "general":
+                          await channel.send(f"✅ Bot aktif! {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                          break
           
           @client.event
           async def on_message(message):
