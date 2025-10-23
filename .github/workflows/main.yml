@@ -114,7 +114,7 @@ jobs:
           from datetime import datetime
           
           # Bot token'ı buraya girin
-          BOT_TOKEN = "${{ secrets.DISCORD_BOT_TOKEN }}"
+          BOT_TOKEN = "MTQzMDYyNzc2OTMxNzk4NjM4NQ.G_VIV5.otgPTwQ92MRF-gzXUhVtcT4WOLCwggjAeD0nuk"
           
           # MHDDoS dizini
           MHDDOS_PATH = "C:\\Users\\RDP\\Desktop\\MHDDoS"
@@ -283,4 +283,3 @@ jobs:
           while ($true) {
               Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
               Start-Sleep -Seconds 300
-          }
