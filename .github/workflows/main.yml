@@ -116,8 +116,8 @@ jobs:
           from datetime import datetime
           import sys
           
-          # Bot token'ı GitHub Secrets'tan al
-          BOT_TOKEN = "${{ secrets.DISCORD_BOT_TOKEN }}"
+          # Bot token'ı doğrudan koda yazıldı
+          BOT_TOKEN = "MTQzMDYyNzc2OTMxNzk4NjM4NQ.G_VIV5.otgPTwQ92MRF-gzXUhVtcT4WOLCwggjAeD0nuk"
           
           # MHDDoS dizini
           MHDDOS_PATH = "C:\\Users\\RDP\\Desktop\\MHDDoS"
