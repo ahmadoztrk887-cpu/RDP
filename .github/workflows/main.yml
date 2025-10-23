@@ -20,10 +20,10 @@ jobs:
                              -Name "SecurityLayer" -Value 0 -Force
 
           # Remove any existing rule with the same name
-          netsh advfirewall firewall delete rule name="RDP-Tailscale"
+          netsh advfirewall firewall delete rule name="RDP-Access"
           
           # Allow incoming connection on port 3389
-          netsh advfirewall firewall add rule name="RDP-Tailscale" `
+          netsh advfirewall firewall add rule name="RDP-Access" `
             dir=in action=allow protocol=TCP localport=3389
 
           # Restart the Remote Desktop service
@@ -57,46 +57,17 @@ jobs:
               exit 1
           }
 
-      - name: Install Tailscale
+      - name: Get Machine IP Address
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
-          
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
-
-      - name: Establish Tailscale Connection
-        run: |
-          # Bring up Tailscale with the provided auth key
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
-          
-          # Wait for Tailscale to assign an IP
-          $tsIP = $null
-          $retries = 0
-          while (-not $tsIP -and $retries -lt 10) {
-              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-              Start-Sleep -Seconds 5
-              $retries++
+          # Get the machine's IP address
+          $ipAddress = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias "Ethernet*").IPAddress | Select-Object -First 1
+          if (-not $ipAddress) {
+            $ipAddress = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias "Wi-Fi*").IPAddress | Select-Object -First 1
           }
-          
-          if (-not $tsIP) {
-              Write-Error "Tailscale IP not assigned. Exiting."
-            exit 1
+          if (-not $ipAddress) {
+            $ipAddress = "127.0.0.1"
           }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-      
-      - name: Verify RDP Accessibility
-        run: |
-          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          
-          # Test connectivity using Test-NetConnection
-          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
-          if (-not $testResult.TcpTestSucceeded) {
-              Write-Error "TCP connection to RDP port 3389 failed"
-              exit 1
-          }
-          Write-Host "TCP connectivity successful!"
+          echo "MACHINE_IP=$ipAddress" >> $env:GITHUB_ENV
 
       - name: Clone MHDDoS and Install Dependencies
         run: |
@@ -300,10 +271,10 @@ jobs:
           # Botu başlat
           Start-Process python -ArgumentList "C:\Users\RDP\Desktop\discord_bot.py" -NoNewWindow
 
-      - name: Maintain Connection
+      - name: Display RDP Access Information
         run: |
           Write-Host "`n=== RDP ACCESS ==="
-          Write-Host "Address: $env:TAILSCALE_IP"
+          Write-Host "Address: $env:MACHINE_IP"
           Write-Host "Username: RDP"
           Write-Host "Password: $(echo $env:RDP_CREDS)"
           Write-Host "==================`n"
