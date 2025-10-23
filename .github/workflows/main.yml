@@ -113,6 +113,24 @@ jobs:
           cd MHDDoS
           python -m pip install -r requirements.txt
 
+      - name: Install Discord Bot Dependencies
+        run: |
+          # Install discord.py and other required packages
+          python -m pip install discord.py
+          python -m pip install py-cord
+          python -m pip install nextcord
+          python -m pip install discord-components
+          python -m pip install discord-py-interactions
+          python -m pip install discord-py-slash-command
+          python -m pip install discord-py[voice]
+          python -m pip install aiohttp
+          python -m pip install async-timeout
+          python -m pip install chardet
+          python -m pip install multidict
+          python -m pip install yarl
+          python -m pip install attrs
+          python -m pip install typing-extensions
+
       - name: Create Discord Bot Script
         run: |
           $botCode = @"
