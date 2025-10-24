@@ -6,6 +6,7 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 9999
     
     steps:
       - name: Checkout code
@@ -19,112 +20,87 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
         shell: pwsh
 
-      - name: Display Credentials
+      - name: Install and Run SSHX
         run: |
-          Write-Host "`n==================================="
-          Write-Host "RDP Credentials"
           Write-Host "==================================="
-          Write-Host "Username: runneradmin"
-          Write-Host "Password: P@ssw0rd123!"
+          Write-Host "Installing SSHX..."
           Write-Host "===================================`n"
-        shell: pwsh
-
-      - name: Download and Run SSHX
-        run: |
-          $sshxUrl = "https://sshx.s3.amazonaws.com/sshx-x86_64-pc-windows-msvc.zip"
-          $zipPath = "$env:TEMP\sshx.zip"
-          $extractPath = "$env:TEMP\sshx"
           
-          Write-Host "Downloading SSHX from S3..."
-          try {
-              Invoke-WebRequest -Uri $sshxUrl -OutFile $zipPath -ErrorAction Stop
-          } catch {
-              Write-Error "Failed to download SSHX: $_"
-              exit 1
+          # Download and install using the official installer
+          Invoke-WebRequest -Uri "https://sshx.io/get" -OutFile "$env:TEMP\install-sshx.ps1"
+          
+          # Run the installer
+          & "$env:TEMP\install-sshx.ps1"
+          
+          # Add to PATH if not already there
+          $sshxPath = "$env:USERPROFILE\.sshx\bin"
+          if (Test-Path $sshxPath) {
+              $env:PATH += ";$sshxPath"
           }
           
-          Write-Host "Extracting SSHX..."
-          New-Item -ItemType Directory -Path $extractPath -Force | Out-Null
-          Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+          Write-Host "`n==================================="
+          Write-Host "Starting SSHX Session..."
+          Write-Host "===================================`n"
           
-          Write-Host "Files in extracted folder:"
-          Get-ChildItem $extractPath -Recurse
+          # Start SSHX in background and capture output
+          Start-Job -Name "SSHXSession" -ScriptBlock {
+              sshx 2>&1 | Tee-Object -FilePath "$env:TEMP\sshx_output.txt"
+          }
           
-          $exePath = Get-ChildItem -Path $extractPath -Filter "*.exe" -Recurse | Select-Object -First 1
+          # Wait for SSHX to initialize
+          Start-Sleep -Seconds 5
           
-          if ($exePath) {
-              Write-Host "`n==================================="
-              Write-Host "Starting SSHX..."
-              Write-Host "===================================`n"
-              
-              $outputFile = "$env:TEMP\sshx_output.txt"
-              $errorFile = "$env:TEMP\sshx_error.txt"
-              
-              $process = Start-Process -FilePath $exePath.FullName -NoNewWindow -PassThru -RedirectStandardOutput $outputFile -RedirectStandardError $errorFile
-              
-              Write-Host "Waiting for SSHX to initialize..."
-              Start-Sleep -Seconds 10
-              
-              if (Test-Path $outputFile) {
-                  Write-Host "`nSSHX Output:"
-                  Write-Host "==================================="
-                  Get-Content $outputFile
-                  Write-Host "===================================`n"
-              }
-              
-              if (Test-Path $errorFile) {
-                  $errorContent = Get-Content $errorFile
-                  if ($errorContent) {
-                      Write-Host "SSHX Error Output:"
-                      Write-Host $errorContent
-                  }
-              }
-              
-              if (Get-Process -Id $process.Id -ErrorAction SilentlyContinue) {
-                  Write-Host "✓ SSHX Process ID: $($process.Id)"
-                  Write-Host "✓ SSHX is running successfully`n"
-              } else {
-                  Write-Error "SSHX process failed to start"
-                  exit 1
-              }
-          } else {
-              Write-Error "SSHX executable not found in extracted files"
-              exit 1
+          # Display the connection URL
+          if (Test-Path "$env:TEMP\sshx_output.txt") {
+              Get-Content "$env:TEMP\sshx_output.txt"
           }
         shell: pwsh
 
-      - name: Keep Session Active
+      - name: Display Connection Info
         run: |
           Write-Host "`n==================================="
-          Write-Host "SSHX SESSION ACTIVE"
+          Write-Host "CONNECTION INFORMATION"
           Write-Host "==================================="
-          Write-Host "Username: runneradmin"
-          Write-Host "Password: P@ssw0rd123!"
-          Write-Host "Check above for SSHX connection URL"
+          Write-Host "RDP Username: runneradmin"
+          Write-Host "RDP Password: P@ssw0rd123!"
+          Write-Host "`nSSHX Connection URL:"
+          
+          Start-Sleep -Seconds 3
+          
+          if (Test-Path "$env:TEMP\sshx_output.txt") {
+              Get-Content "$env:TEMP\sshx_output.txt"
+          }
+          
           Write-Host "===================================`n"
+        shell: pwsh
+
+      - name: Keep Session Alive
+        run: |
+          Write-Host "Session is now active. Keeping alive..."
+          Write-Host "Press Cancel Workflow to terminate`n"
           
-          $outputFile = "$env:TEMP\sshx_output.txt"
-          $lastContent = ""
-          $counter = 0
-          
+          $iteration = 0
           while ($true) {
-              $counter++
+              $iteration++
               
-              if (Test-Path $outputFile) {
-                  $currentContent = Get-Content $outputFile -Raw
-                  if ($currentContent -ne $lastContent) {
-                      Write-Host "`n[UPDATE] New SSHX Output:"
-                      Write-Host "==================================="
-                      Write-Host $currentContent
-                      Write-Host "===================================`n"
-                      $lastContent = $currentContent
+              # Check if SSHX job is still running
+              $job = Get-Job -Name "SSHXSession" -ErrorAction SilentlyContinue
+              if ($job) {
+                  $jobState = $job.State
+                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Iteration $iteration - SSHX Status: $jobState"
+                  
+                  # Get any new output from SSHX
+                  $output = Receive-Job -Name "SSHXSession" -ErrorAction SilentlyContinue
+                  if ($output) {
+                      Write-Host "SSHX Output: $output"
+                  }
+              } else {
+                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Warning: SSHX job not found, restarting..."
+                  Start-Job -Name "SSHXSession" -ScriptBlock {
+                      sshx 2>&1 | Tee-Object -FilePath "$env:TEMP\sshx_output.txt"
                   }
               }
               
-              if ($counter % 1 -eq 0) {
-                  Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Session Active - Cancel workflow to terminate"
-              }
-              
-              Start-Sleep -Seconds 300
+              Start-Sleep -Seconds 60
           }
         shell: pwsh
