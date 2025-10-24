@@ -1,14 +1,14 @@
 name: Discord Bot Runner
 
 on:
-  workflow_dispatch:  # Manuel tetikleme
+  workflow_dispatch:  # Manuel tetikleme için
   schedule:
     - cron: '0 */6 * * *'  # Her 6 saatte bir
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6 saat limit
+    timeout-minutes: 360  # 6 saat zaman aşımı
 
     steps:
     - name: Checkout repository
@@ -24,11 +24,14 @@ jobs:
 
     - name: Install dependencies
       run: |
+        # Bot bağımlılıklarını yükle
+        pip install -r requirements.txt
+        
+        # MHDDoS bağımlılıklarını yükle
         cd MHDDoS
         pip install -r requirements.txt
-        pip install -r ../requirements.txt
 
     - name: Run Discord Bot
       env:
-        DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}  # Secret'tan al
+        DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
       run: python bot.py
