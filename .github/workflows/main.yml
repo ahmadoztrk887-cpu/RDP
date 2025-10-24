@@ -13,9 +13,11 @@ jobs:
 
       - name: Setup RDP
         run: |
-          Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "password123" -Force)
+          $Password = ConvertTo-SecureString -AsPlainText "P@ssw0rd123!" -Force
+          Set-LocalUser -Name "runneradmin" -Password $Password
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+        shell: pwsh
 
       - name: Display Credentials
         run: |
@@ -23,8 +25,9 @@ jobs:
           Write-Host "RDP Credentials"
           Write-Host "==================================="
           Write-Host "Username: runneradmin"
-          Write-Host "Password: password123"
+          Write-Host "Password: P@ssw0rd123!"
           Write-Host "===================================`n"
+        shell: pwsh
 
       - name: Download and Run SSHX
         run: |
@@ -88,6 +91,7 @@ jobs:
               Write-Error "SSHX executable not found in extracted files"
               exit 1
           }
+        shell: pwsh
 
       - name: Keep Session Active
         run: |
@@ -95,7 +99,7 @@ jobs:
           Write-Host "SSHX SESSION ACTIVE"
           Write-Host "==================================="
           Write-Host "Username: runneradmin"
-          Write-Host "Password: password123"
+          Write-Host "Password: P@ssw0rd123!"
           Write-Host "Check above for SSHX connection URL"
           Write-Host "===================================`n"
           
@@ -123,3 +127,4 @@ jobs:
               
               Start-Sleep -Seconds 300
           }
+        shell: pwsh
