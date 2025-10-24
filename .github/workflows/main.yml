@@ -1,37 +1,100 @@
-name: Discord Bot Runner
+@@ -20,54 +20,72 @@ jobs:
+          Write-Host "Username: admin"
+          Write-Host "Password: password123"
 
-on:
-  workflow_dispatch:  # Manuel tetikleme için
-  schedule:
-    - cron: '0 */6 * * *'  # Her 6 saatte bir
+      - name: Install and Setup SSHX
+      - name: Download and Run SSHX
+        run: |
+          # Download SSHX for Windows
+          $sshxUrl = "https://github.com/ekzhang/sshx/releases/latest/download/sshx-x86_64-pc-windows-msvc.zip"
+          # Download SSHX from S3
+          $sshxUrl = "https://sshx.s3.amazonaws.com/sshx-x86_64-pc-windows-msvc.zip"
+          $zipPath = "$env:TEMP\sshx.zip"
+          $extractPath = "$env:TEMP\sshx"
+          
+          Write-Host "Downloading SSHX..."
+          Write-Host "Downloading SSHX from S3..."
+          Invoke-WebRequest -Uri $sshxUrl -OutFile $zipPath
+          
+          Write-Host "Extracting SSHX..."
+          New-Item -ItemType Directory -Path $extractPath -Force | Out-Null
+          Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+          
+          # Change to extract directory
+          cd $extractPath
+          Write-Host "Files in extracted folder:"
+          Get-ChildItem $extractPath
+          
+          Write-Host "`n==================================="
+          Write-Host "Starting SSHX service..."
+          Write-Host "===================================`n"
+          # Find the exe file
+          $exePath = Get-ChildItem -Path $extractPath -Filter "*.exe" -Recurse | Select-Object -First 1
+          
+          # Run SSHX and capture output
+          .\sshx.exe
 
-jobs:
-  run-bot:
-    runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6 saat zaman aşımı
+      - name: Alternative SSHX Setup (using curl)
+        if: failure()
+        run: |
+          # Try alternative method with curl
+          Write-Host "Trying alternative SSHX setup..."
+          
+          # Install curl if not available
+          if (-not (Get-Command curl -ErrorAction SilentlyContinue)) {
+              Write-Host "Installing curl..."
+              choco install curl -y
+          if ($exePath) {
+              Write-Host "`n==================================="
+              Write-Host "Starting SSHX..."
+              Write-Host "===================================`n"
+              
+              # Run SSHX and capture output
+              $process = Start-Process -FilePath $exePath.FullName -NoNewWindow -PassThru -RedirectStandardOutput "$env:TEMP\sshx_output.txt" -RedirectStandardError "$env:TEMP\sshx_error.txt"
+              
+              # Wait a bit for SSHX to start and generate URL
+              Start-Sleep -Seconds 5
+              
+              # Display output
+              if (Test-Path "$env:TEMP\sshx_output.txt") {
+                  Write-Host "SSHX Output:"
+                  Get-Content "$env:TEMP\sshx_output.txt"
+              }
+              
+              if (Test-Path "$env:TEMP\sshx_error.txt") {
+                  Write-Host "SSHX Error Output:"
+                  Get-Content "$env:TEMP\sshx_error.txt"
+              }
+              
+              Write-Host "`nSSHX Process ID: $($process.Id)"
+              Write-Host "SSHX is running in background"
+          } else {
+              Write-Error "SSHX executable not found in extracted files"
+              exit 1
+          }
+          
+          # Run SSHX using curl
+          curl -sSf https://sshx.io/get | sh -s run
 
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-
-    - name: Clone MHDDoS
-      run: git clone https://github.com/MatrixTM/MHDDoS.git
-
-    - name: Install dependencies
-      run: |
-        # Bot bağımlılıklarını yükle
-        pip install -r requirements.txt
-        
-        # MHDDoS bağımlılıklarını yükle
-        cd MHDDoS
-        pip install -r requirements.txt
-
-    - name: Run Discord Bot
-      env:
-        DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
-      run: python bot.py
+      - name: Keep Session Active
+        run: |
+          Write-Host "`n=== SSHX SESSION ACTIVE ==="
+          Write-Host "Username: admin"
+          Write-Host "Password: password123"
+          Write-Host "Check above for SSHX connection URL"
+          Write-Host "===========================`n"
+          
+          # Keep the session active
+          # Continuously check and display SSHX output
+          while ($true) {
+              if (Test-Path "$env:TEMP\sshx_output.txt") {
+                  $content = Get-Content "$env:TEMP\sshx_output.txt" -Tail 10
+                  if ($content) {
+                      Write-Host "Latest SSHX Output:"
+                      Write-Host $content
+                  }
+              }
+              
+              Write-Host "[$(Get-Date)] Session Active - Cancel workflow to terminate"
+              Start-Sleep -Seconds 300
+          }
