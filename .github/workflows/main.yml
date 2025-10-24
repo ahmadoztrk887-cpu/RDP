@@ -1,15 +1,33 @@
-- name: Display Credentials
+name: Windows RDP with SSHX
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup RDP
+        run: |
+          Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "password123" -Force)
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+
+      - name: Display Credentials
         run: |
           Write-Host "`n==================================="
           Write-Host "RDP Credentials"
           Write-Host "==================================="
-          Write-Host "Username: admin"
+          Write-Host "Username: runneradmin"
           Write-Host "Password: password123"
           Write-Host "===================================`n"
 
       - name: Download and Run SSHX
         run: |
-          # Download SSHX from S3
           $sshxUrl = "https://sshx.s3.amazonaws.com/sshx-x86_64-pc-windows-msvc.zip"
           $zipPath = "$env:TEMP\sshx.zip"
           $extractPath = "$env:TEMP\sshx"
@@ -29,7 +47,6 @@
           Write-Host "Files in extracted folder:"
           Get-ChildItem $extractPath -Recurse
           
-          # Find the exe file
           $exePath = Get-ChildItem -Path $extractPath -Filter "*.exe" -Recurse | Select-Object -First 1
           
           if ($exePath) {
@@ -37,22 +54,14 @@
               Write-Host "Starting SSHX..."
               Write-Host "===================================`n"
               
-              # Create output files
               $outputFile = "$env:TEMP\sshx_output.txt"
               $errorFile = "$env:TEMP\sshx_error.txt"
               
-              # Run SSHX in background
-              $process = Start-Process -FilePath $exePath.FullName `
-                  -NoNewWindow `
-                  -PassThru `
-                  -RedirectStandardOutput $outputFile `
-                  -RedirectStandardError $errorFile
+              $process = Start-Process -FilePath $exePath.FullName -NoNewWindow -PassThru -RedirectStandardOutput $outputFile -RedirectStandardError $errorFile
               
-              # Wait for SSHX to start and generate URL
               Write-Host "Waiting for SSHX to initialize..."
               Start-Sleep -Seconds 10
               
-              # Display output
               if (Test-Path $outputFile) {
                   Write-Host "`nSSHX Output:"
                   Write-Host "==================================="
@@ -68,7 +77,6 @@
                   }
               }
               
-              # Check if process is running
               if (Get-Process -Id $process.Id -ErrorAction SilentlyContinue) {
                   Write-Host "✓ SSHX Process ID: $($process.Id)"
                   Write-Host "✓ SSHX is running successfully`n"
@@ -86,7 +94,7 @@
           Write-Host "`n==================================="
           Write-Host "SSHX SESSION ACTIVE"
           Write-Host "==================================="
-          Write-Host "Username: admin"
+          Write-Host "Username: runneradmin"
           Write-Host "Password: password123"
           Write-Host "Check above for SSHX connection URL"
           Write-Host "===================================`n"
@@ -95,11 +103,9 @@
           $lastContent = ""
           $counter = 0
           
-          # Keep the session active and monitor SSHX
           while ($true) {
               $counter++
               
-              # Check if SSHX output has new content
               if (Test-Path $outputFile) {
                   $currentContent = Get-Content $outputFile -Raw
                   if ($currentContent -ne $lastContent) {
@@ -111,7 +117,6 @@
                   }
               }
               
-              # Status update every 5 minutes
               if ($counter % 1 -eq 0) {
                   Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Session Active - Cancel workflow to terminate"
               }
